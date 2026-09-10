@@ -15,8 +15,13 @@ within a ~10-minute walk, plotted on a dark Captur-branded map.
   - no coffee shops — this is a lunch map
   - nothing over ~£15 a meal (fine dining, steakhouses, and hotel
     restaurants are curated out by name — OSM has no price data)
-- 🔍 Search, category filter chips (double-click a chip to isolate it), and a
-  max-walk-time slider
+- 🔍 Search, category filter chips (double-click a chip to isolate it, and an
+  all/none toggle), and a max-walk-time slider
+- 🟢 **Open now** filter — opening hours from OSM are parsed client-side;
+  green/red dots in the list show live open/closed status (70 of 242 places
+  have hours data; the filter hides places with no data)
+- 🌱 **Dietary filters** — vegetarian (33), vegan (22), and halal (6), from
+  OSM diet tags, so coverage is only as good as the tagging
 - 🎡 **Wheel of Lunch** — spins across 12 contenders drawn from your current
   filters; the wheel's verdict is final
 - 📍 **Add place** — click the button, click the map, fill in the form. Saved

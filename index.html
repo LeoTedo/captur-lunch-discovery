@@ -73,6 +73,11 @@
   }
   .chip.on { background: var(--grad); color: #fff; border-color: transparent; }
   .chip:hover { border-color: var(--brand-3); }
+  .chip.toggle-all { border-style: dashed; font-family: var(--mono); font-size: 11px; }
+  #chips2 { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); }
+  .st { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 6px; flex-shrink: 0; vertical-align: middle; }
+  .st.o { background: #3ADB76; }
+  .st.c { background: #E2386E; }
   .row { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
   .row label { font-size: 12px; color: var(--muted); white-space: nowrap; font-family: var(--mono); }
   input[type=range] { flex: 1; accent-color: var(--brand-2); }
@@ -244,6 +249,12 @@
   <div id="controls">
     <input id="search" type="search" placeholder="Search places or cuisines…">
     <div id="chips"></div>
+    <div id="chips2">
+      <button class="chip" id="f-open" title="Only places whose opening hours say they're open right now — places with no hours data in OpenStreetMap are hidden too">🟢 Open now</button>
+      <button class="chip" id="f-vt" title="Vegetarian-friendly (per OpenStreetMap tags)">🌱 Vegetarian</button>
+      <button class="chip" id="f-vg" title="Vegan-friendly (per OpenStreetMap tags)">🌿 Vegan</button>
+      <button class="chip" id="f-hl" title="Halal (per OpenStreetMap tags)">☪️ Halal</button>
+    </div>
     <div class="row">
       <label>MAX WALK</label>
       <input id="walk" type="range" min="1" max="10" value="10" step="1">
@@ -363,15 +374,78 @@ L.marker([OFFICE.lat, OFFICE.lon], {
 const cluster = L.markerClusterGroup({ maxClusterRadius: 42, disableClusteringAtZoom: 18, showCoverageOnHover: false });
 map.addLayer(cluster);
 
+/* ---------------- opening hours (subset of OSM syntax) ---------------- */
+function parseOH(s) {
+  const dayIdx = { Mo: 1, Tu: 2, We: 3, Th: 4, Fr: 5, Sa: 6, Su: 0 };
+  const order = [1, 2, 3, 4, 5, 6, 0]; // Mo..Su
+  const week = [[], [], [], [], [], [], []];
+  s = s.trim();
+  if (s === '24/7') { for (let i = 0; i < 7; i++) week[i].push([0, 1440]); return week; }
+  // "…-23:00, Sa 09:00-…": a comma after a time and before a day token separates rules
+  s = s.replace(/(\d)\s*,\s*(?=(?:Mo|Tu|We|Th|Fr|Sa|Su)\b)/g, '$1;');
+  for (let rule of s.split(';')) {
+    rule = rule.trim();
+    if (!rule || /^(PH|SH)\b/i.test(rule)) continue; // ignore holiday rules
+    const md = rule.match(/^((?:(?:Mo|Tu|We|Th|Fr|Sa|Su)(?:\s*-\s*(?:Mo|Tu|We|Th|Fr|Sa|Su))?)(?:\s*,\s*(?:Mo|Tu|We|Th|Fr|Sa|Su)(?:\s*-\s*(?:Mo|Tu|We|Th|Fr|Sa|Su))?)*)\s*(.*)$/);
+    let days = [], rest;
+    if (md && md[1]) {
+      rest = md[2].trim();
+      for (const tok of md[1].split(',')) {
+        const t = tok.trim();
+        const mr = t.match(/^(Mo|Tu|We|Th|Fr|Sa|Su)\s*-\s*(Mo|Tu|We|Th|Fr|Sa|Su)$/);
+        if (mr) {
+          const ai = order.indexOf(dayIdx[mr[1]]), bi = order.indexOf(dayIdx[mr[2]]);
+          if (ai <= bi) for (let i = ai; i <= bi; i++) days.push(order[i]);
+          else { for (let i = ai; i < 7; i++) days.push(order[i]); for (let i = 0; i <= bi; i++) days.push(order[i]); }
+        } else if (dayIdx[t] !== undefined) days.push(dayIdx[t]);
+        else return null;
+      }
+    } else { days = [0, 1, 2, 3, 4, 5, 6]; rest = rule; }
+    if (!rest) return null;
+    if (/^(off|closed)$/i.test(rest)) { for (const d of days) week[d] = []; continue; }
+    const ints = [];
+    for (const tr of rest.split(',')) {
+      const mt = tr.trim().match(/^(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})\s*\+?$/);
+      if (!mt) return null;
+      const a = (+mt[1]) * 60 + (+mt[2]);
+      let b = (+mt[3]) * 60 + (+mt[4]);
+      if (b === 0) b = 1440;
+      if (b > 1440) b -= 1440; // "11:00-25:00" style → overnight
+      if (a >= 1440) return null;
+      ints.push([a, b]);
+    }
+    for (const d of days) week[d] = ints.slice(); // later rules override
+  }
+  return week;
+}
+
+function openState(p) { // true = open, false = closed, null = unknown
+  if (!p.h) return null;
+  if (p._oh === undefined) { try { p._oh = parseOH(p.h); } catch { p._oh = null; } }
+  if (!p._oh) return null;
+  const now = new Date();
+  const d = now.getDay(), mins = now.getHours() * 60 + now.getMinutes();
+  for (const [a, b] of p._oh[d]) {
+    if (b >= a) { if (mins >= a && mins < b) return true; }
+    else if (mins >= a) return true; // runs past midnight
+  }
+  for (const [a, b] of p._oh[(d + 6) % 7]) // spill-over from yesterday
+    if (b < a && mins < b) return true;
+  return false;
+}
+
 /* ---------------- state + filtering ---------------- */
 const activeCats = new Set(CATEGORIES.map(c => c.id));
 let maxWalk = 10, query = '';
+const flags = { open: false, vt: false, vg: false, hl: false };
 
 function filtered() {
   const q = query.trim().toLowerCase();
   return allPlaces().filter(p =>
     p.w <= maxWalk &&
     activeCats.has(p.c) &&
+    (!flags.vt || p.vt) && (!flags.vg || p.vg) && (!flags.hl || p.hl) &&
+    (!flags.open || openState(p) === true) &&
     (!q || p.n.toLowerCase().includes(q) || (p.cu || '').toLowerCase().includes(q))
   );
 }
@@ -383,6 +457,10 @@ function popupHtml(p) {
   if (p.cu) html += `<div class="pop-meta">${esc(p.cu)}</div>`;
   if (p.a) html += `<div class="pop-meta">${esc(p.a)}</div>`;
   if (p.h) html += `<div class="pop-meta">🕐 ${esc(p.h)}</div>`;
+  const st = openState(p);
+  if (st !== null) html += `<div class="pop-meta" style="color:${st ? '#3ADB76' : '#E2386E'}">${st ? '● Open now' : '● Closed right now'}</div>`;
+  const diets = [p.vg && '🌿 vegan', !p.vg && p.vt && '🌱 vegetarian', p.hl && '☪️ halal'].filter(Boolean);
+  if (diets.length) html += `<div class="pop-meta">${diets.join(' · ')}</div>`;
   html += `<div class="pop-walk">🚶 ~${p.w} min walk</div>`;
   html += `<div class="pop-links"><a href="${gmaps}" target="_blank" rel="noopener">Directions</a>`;
   if (p.u) html += `<a href="${esc(p.u)}" target="_blank" rel="noopener">Website</a>`;
@@ -420,8 +498,11 @@ function render() {
     const cat = CAT_BY_ID[p.c] || CAT_BY_ID.other;
     const el = document.createElement('div');
     el.className = 'item';
+    const st = openState(p);
+    const dot = st === true ? '<span class="st o" title="Open now"></span>'
+              : st === false ? '<span class="st c" title="Closed right now"></span>' : '';
     el.innerHTML = `<span class="em">${cat.emoji}</span>
-      <div style="min-width:0"><div class="nm">${esc(p.n)}${p.custom || p.shared ? '<span class="custom-dot" title="Team pick"></span>' : ''}</div>
+      <div style="min-width:0"><div class="nm">${dot}${esc(p.n)}${p.custom || p.shared ? '<span class="custom-dot" title="Team pick"></span>' : ''}</div>
       <div class="meta">${esc(p.cu || cat.label)}</div></div>
       <span class="wk">${p.w}′</span>`;
     el.addEventListener('click', () => flyTo(p));
@@ -439,14 +520,21 @@ function flyTo(p) {
 
 /* ---------------- controls ---------------- */
 const chipsEl = document.getElementById('chips');
+const allBtn = document.createElement('button');
+allBtn.className = 'chip toggle-all';
+allBtn.addEventListener('click', () => {
+  if (activeCats.size === CATEGORIES.length) activeCats.clear();
+  else CATEGORIES.forEach(c => activeCats.add(c.id));
+  syncChips(); render();
+});
+chipsEl.appendChild(allBtn);
 for (const c of CATEGORIES) {
   const b = document.createElement('button');
   b.className = 'chip on';
   b.textContent = `${c.emoji} ${c.label}`;
   b.title = 'Click: toggle · Double-click: only this';
   b.addEventListener('click', () => {
-    if (activeCats.has(c.id) && activeCats.size === 1) { CATEGORIES.forEach(x => activeCats.add(x.id)); }
-    else if (activeCats.has(c.id)) activeCats.delete(c.id);
+    if (activeCats.has(c.id)) activeCats.delete(c.id);
     else activeCats.add(c.id);
     syncChips(); render();
   });
@@ -455,7 +543,19 @@ for (const c of CATEGORIES) {
   chipsEl.appendChild(b);
 }
 function syncChips() {
-  for (const b of chipsEl.children) b.classList.toggle('on', activeCats.has(b.dataset.cat));
+  for (const b of chipsEl.children) {
+    if (b === allBtn) { allBtn.textContent = activeCats.size === CATEGORIES.length ? '✕ none' : '✓ all'; continue; }
+    b.classList.toggle('on', activeCats.has(b.dataset.cat));
+  }
+}
+syncChips();
+
+for (const [id, key] of [['f-open', 'open'], ['f-vt', 'vt'], ['f-vg', 'vg'], ['f-hl', 'hl']]) {
+  document.getElementById(id).addEventListener('click', e => {
+    flags[key] = !flags[key];
+    e.currentTarget.classList.toggle('on', flags[key]);
+    render();
+  });
 }
 
 document.getElementById('search').addEventListener('input', e => { query = e.target.value; render(); });
