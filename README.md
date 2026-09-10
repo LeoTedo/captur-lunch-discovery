@@ -8,8 +8,10 @@ within a ~10-minute walk, plotted on a dark Captur-branded map.
 
 ## Features
 
-- 🗺️ **519 real places** within a 10-minute walk, pulled from OpenStreetMap,
-  with emoji markers by cuisine and 5/10-minute walk rings around the office
+- 🗺️ **416 real places** within a 10-minute walk, pulled from OpenStreetMap,
+  with emoji markers by cuisine and 5/10-minute walk rings around the office.
+  Major high-street chains (Pret, Greggs, Itsu, Costa, McDonald's, …) are
+  filtered out — independents and small local spots only
 - 🔍 Search, category filter chips (double-click a chip to isolate it), and a
   max-walk-time slider
 - 🎡 **Wheel of Lunch** — spins across 12 contenders drawn from your current
@@ -39,8 +41,10 @@ then open http://localhost:4173.
 `data.js` is a snapshot generated from the [Overpass API](https://overpass-api.de/)
 (query: `restaurant | fast_food | cafe | food_court` within 800 m of the office),
 filtered to an estimated ≤10-minute walk (straight-line distance × 1.25 route
-factor at 80 m/min) and categorised by cuisine tag. Re-run the same query any
-time the area changes and regenerate the file.
+factor at 80 m/min) and categorised by cuisine tag. Major chain names are then
+filtered out (ambiguous short names like "Pho" or "Leon" only match exactly, so
+independents like "Delicious Pho" survive). Re-run the same query any time the
+area changes and regenerate the file.
 
 Map data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, ODbL.
 
