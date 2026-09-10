@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Captur Lunch Radar</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍜</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lexend+Deca:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.min.css">
+<style>
+  :root {
+    --ink: #0A0A0A;
+    --panel: #141416;
+    --panel-2: #1C1C20;
+    --line: #2A2A30;
+    --text: #F4F4F6;
+    --muted: #B8B8B8;
+    --brand-1: #4938E2;
+    --brand-2: #386EE2;
+    --brand-3: #54B4DD;
+    --grad: linear-gradient(120deg, #4938E2, #386EE2 55%, #54B4DD);
+    --sans: 'Lexend Deca', -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+    --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; font-family: var(--sans); background: var(--ink); color: var(--text);
+    overflow: hidden;
+  }
+  #map { position: absolute; inset: 0; background: var(--ink); }
+  /* Dark-mode treatment for standard OSM tiles (no API key needed) */
+  .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.82) contrast(.92) saturate(.45); }
+  .leaflet-container { font-family: var(--sans); }
+
+  /* ---------- Sidebar panel ---------- */
+  #panel {
+    position: absolute; top: 16px; left: 16px; bottom: 16px; width: 348px; z-index: 1000;
+    background: rgba(20,20,22,.92); backdrop-filter: blur(14px);
+    border: 1px solid var(--line); border-radius: 16px;
+    display: flex; flex-direction: column; overflow: hidden;
+    box-shadow: 0 12px 40px rgba(0,0,0,.55);
+  }
+  #panel-head { padding: 18px 18px 14px; position: relative; }
+  #panel-head .corner { position: absolute; width: 18px; height: 18px; opacity: .85; }
+  #panel-head .corner.tl { top: 10px; left: 10px; border-top: 2.5px solid #fff; border-left: 2.5px solid #fff; border-top-left-radius: 4px; }
+  #panel-head .corner.br { display:none; }
+  .wordmark { display: flex; align-items: center; gap: 10px; }
+  .wordmark svg { height: 26px; width: auto; display: block; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 5px; color: var(--brand-3);
+    margin-top: 6px; text-transform: uppercase;
+  }
+  .sub { color: var(--muted); font-size: 12.5px; margin-top: 8px; font-weight: 300; }
+  .sub b { color: var(--text); font-weight: 500; }
+
+  #controls { padding: 0 18px 12px; border-bottom: 1px solid var(--line); }
+  #search {
+    width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--panel-2); color: var(--text); font-family: var(--sans); font-size: 13.5px;
+    outline: none;
+  }
+  #search:focus { border-color: var(--brand-2); }
+  #chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .chip {
+    border: 1px solid var(--line); background: var(--panel-2); color: var(--muted);
+    border-radius: 999px; padding: 4px 10px; font-size: 12px; cursor: pointer; user-select: none;
+    font-family: var(--sans); transition: all .15s;
+  }
+  .chip.on { background: var(--grad); color: #fff; border-color: transparent; }
+  .chip:hover { border-color: var(--brand-3); }
+  .row { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+  .row label { font-size: 12px; color: var(--muted); white-space: nowrap; font-family: var(--mono); }
+  input[type=range] { flex: 1; accent-color: var(--brand-2); }
+  #walkval { font-family: var(--mono); font-size: 12px; color: var(--brand-3); width: 52px; text-align: right; }
+
+  #actions { display: flex; gap: 8px; margin-top: 12px; }
+  .btn {
+    flex: 1; padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--panel-2); color: var(--text); font-family: var(--sans); font-weight: 500;
+    font-size: 13px; cursor: pointer; transition: all .15s; text-align: center;
+  }
+  .btn:hover { border-color: var(--brand-3); }
+  .btn.primary { background: var(--grad); border-color: transparent; font-weight: 600; }
+  .btn.primary:hover { filter: brightness(1.12); }
+  .btn.danger-on { background: #E2386E; border-color: transparent; }
+
+  #count {
+    padding: 10px 18px; font-family: var(--mono); font-size: 11px; color: var(--muted);
+    letter-spacing: 1px; text-transform: uppercase;
+  }
+  #count b { color: var(--brand-3); }
+  #list { flex: 1; overflow-y: auto; padding: 0 10px 12px; }
+  #list::-webkit-scrollbar { width: 8px; }
+  #list::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+  .item {
+    display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px;
+    cursor: pointer; transition: background .12s;
+  }
+  .item:hover { background: var(--panel-2); }
+  .item .em { font-size: 19px; width: 26px; text-align: center; flex-shrink: 0; }
+  .item .nm { font-size: 13.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item .meta { font-size: 11px; color: var(--muted); font-weight: 300; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item .wk { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--brand-3); flex-shrink: 0; }
+  .item .custom-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--grad); margin-left: 5px; vertical-align: middle; }
+
+  /* ---------- Map markers ---------- */
+  .emoji-pin {
+    display: flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; border-radius: 50%;
+    background: rgba(10,10,10,.88); border: 1.5px solid var(--line);
+    font-size: 16px; box-shadow: 0 2px 8px rgba(0,0,0,.5);
+  }
+  .emoji-pin.custom { border-color: var(--brand-3); box-shadow: 0 0 10px rgba(84,180,221,.5); }
+  .office-pin { position: relative; width: 38px; height: 38px; }
+  .office-pin .c { position: absolute; width: 11px; height: 11px; }
+  .office-pin .c1 { top: 0; left: 0; border-top: 3px solid #fff; border-left: 3px solid #fff; border-top-left-radius: 3px; }
+  .office-pin .c2 { top: 0; right: 0; border-top: 3px solid #fff; border-right: 3px solid #fff; border-top-right-radius: 3px; }
+  .office-pin .c3 { bottom: 0; left: 0; border-bottom: 3px solid #fff; border-left: 3px solid #fff; border-bottom-left-radius: 3px; }
+  .office-pin .c4 { bottom: 0; right: 0; border-bottom: 3px solid #fff; border-right: 3px solid #fff; border-bottom-right-radius: 3px; }
+  .office-pin .dot {
+    position: absolute; inset: 11px; border-radius: 50%; background: var(--grad);
+    box-shadow: 0 0 14px rgba(73,56,226,.9);
+  }
+  .marker-cluster-small, .marker-cluster-medium, .marker-cluster-large { background: rgba(56,110,226,.35) !important; }
+  .marker-cluster-small div, .marker-cluster-medium div, .marker-cluster-large div {
+    background: rgba(73,56,226,.92) !important; color: #fff !important;
+    font-family: var(--mono) !important; font-weight: 700;
+  }
+  .leaflet-popup-content-wrapper {
+    background: var(--panel); color: var(--text); border-radius: 12px;
+    border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(0,0,0,.6);
+  }
+  .leaflet-popup-tip { background: var(--panel); }
+  .leaflet-popup-content { margin: 14px 16px; font-family: var(--sans); }
+  .pop-name { font-size: 15px; font-weight: 600; margin-bottom: 3px; }
+  .pop-meta { font-size: 12px; color: var(--muted); margin-bottom: 2px; font-weight: 300; }
+  .pop-walk { font-family: var(--mono); font-size: 11.5px; color: var(--brand-3); margin: 6px 0; }
+  .pop-links { display: flex; gap: 12px; margin-top: 8px; }
+  .pop-links a, .pop-links button {
+    font-size: 12px; color: var(--brand-3); text-decoration: none; font-weight: 500;
+    background: none; border: none; cursor: pointer; padding: 0; font-family: var(--sans);
+  }
+  .pop-links a:hover { text-decoration: underline; }
+  .leaflet-popup-close-button { color: var(--muted) !important; }
+  .leaflet-control-attribution { background: rgba(10,10,10,.75) !important; color: #777 !important; font-size: 10px !important; }
+  .leaflet-control-attribution a { color: #999 !important; }
+  .leaflet-control-zoom a { background: var(--panel) !important; color: var(--text) !important; border-color: var(--line) !important; }
+
+  /* ---------- Modals (add place + wheel) ---------- */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(5,5,8,.72); backdrop-filter: blur(6px);
+    z-index: 2000; display: none; align-items: center; justify-content: center;
+  }
+  .overlay.show { display: flex; }
+  .modal {
+    position: relative; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 18px; padding: 26px; width: min(430px, calc(100vw - 32px));
+    box-shadow: 0 20px 60px rgba(0,0,0,.7);
+  }
+  .modal .vf { position: absolute; width: 16px; height: 16px; opacity: .9; }
+  .modal .vf.tl { top: 9px; left: 9px; border-top: 2.5px solid #fff; border-left: 2.5px solid #fff; border-top-left-radius: 4px; }
+  .modal .vf.br { bottom: 9px; right: 9px; border-bottom: 2.5px solid #fff; border-right: 2.5px solid #fff; border-bottom-right-radius: 4px; }
+  .modal h2 { margin: 0 0 4px; font-size: 18px; font-weight: 600; }
+  .modal .hint { color: var(--muted); font-size: 12.5px; font-weight: 300; margin-bottom: 16px; }
+  .modal label { display: block; font-family: var(--mono); font-size: 10.5px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin: 12px 0 5px; }
+  .modal input, .modal select {
+    width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--panel-2); color: var(--text); font-family: var(--sans); font-size: 13.5px; outline: none;
+  }
+  .modal input:focus, .modal select:focus { border-color: var(--brand-2); }
+  .modal .btns { display: flex; gap: 10px; margin-top: 20px; }
+
+  /* ---------- Wheel ---------- */
+  #wheel-wrap { text-align: center; }
+  #wheel-box { position: relative; width: min(400px, 78vw); margin: 10px auto 0; }
+  #wheel { width: 100%; height: auto; display: block; }
+  #wheel-pointer {
+    position: absolute; top: -6px; left: 50%; transform: translateX(-50%);
+    width: 0; height: 0; border-left: 14px solid transparent; border-right: 14px solid transparent;
+    border-top: 24px solid #fff; filter: drop-shadow(0 2px 6px rgba(0,0,0,.6)); z-index: 2;
+  }
+  #wheel-hub {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    width: 64px; height: 64px; border-radius: 50%; background: var(--ink);
+    border: 2px solid #fff; display: flex; align-items: center; justify-content: center;
+    font-size: 26px; z-index: 2; box-shadow: 0 0 20px rgba(73,56,226,.7);
+  }
+  #wheel-result {
+    min-height: 54px; margin-top: 16px; display: flex; flex-direction: column; gap: 2px;
+    align-items: center; justify-content: center;
+  }
+  #wheel-result .win-name { font-size: 19px; font-weight: 700; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  #wheel-result .win-meta { font-size: 12.5px; color: var(--muted); font-weight: 300; }
+
+  #toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: var(--panel); border: 1px solid var(--brand-2); color: var(--text);
+    padding: 10px 18px; border-radius: 10px; font-size: 13px; z-index: 3000;
+    display: none; box-shadow: 0 8px 30px rgba(0,0,0,.6);
+  }
+  #hamburger { display: none; }
+
+  @media (max-width: 720px) {
+    #panel { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; height: 52vh; transition: height .25s; overflow-y: auto; display: block; }
+    #list { overflow: visible; }
+    #panel.collapsed { height: 128px; }
+    #panel.collapsed #controls, #panel.collapsed #count, #panel.collapsed #list { display: none; }
+    #hamburger {
+      display: block; position: absolute; top: 14px; right: 14px; z-index: 5;
+      background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
+      border-radius: 8px; padding: 5px 11px; font-size: 15px; cursor: pointer;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<aside id="panel">
+  <button id="hamburger" title="Expand / collapse">☰</button>
+  <div id="panel-head">
+    <span class="corner tl"></span>
+    <div class="wordmark">
+      <svg viewBox="0 0 320 132" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Captur">
+        <path d="M242.848 89.9232V50.3337H253.101L253.475 63.0562L251.679 60.4369C252.277 58.3913 253.25 56.5453 254.597 54.8989C255.944 53.2025 257.516 51.8804 259.312 50.9324C261.158 49.9845 263.079 49.5105 265.075 49.5105C265.923 49.5105 266.746 49.5853 267.544 49.735C268.343 49.8847 269.016 50.0593 269.565 50.2589L266.721 61.9337C266.122 61.6343 265.399 61.3849 264.551 61.1853C263.703 60.9358 262.83 60.8111 261.931 60.8111C260.734 60.8111 259.611 61.0356 258.564 61.4846C257.566 61.8838 256.693 62.4825 255.944 63.2808C255.196 64.0291 254.597 64.9272 254.148 65.9749C253.749 67.0227 253.55 68.1702 253.55 69.4175V89.9232H242.848Z" fill="#FFFFFF"/>
+        <path d="M213.071 90.6716C210.177 90.6716 207.683 90.048 205.587 88.8007C203.542 87.5035 201.945 85.6824 200.798 83.3375C199.7 80.9426 199.151 78.0738 199.151 74.7311V50.3337H209.778V73.0098C209.778 74.8059 210.078 76.3775 210.676 77.7246C211.275 79.0218 212.123 80.0196 213.221 80.7181C214.318 81.4166 215.665 81.7659 217.262 81.7659C218.41 81.7659 219.482 81.5912 220.48 81.242C221.478 80.8429 222.326 80.294 223.025 79.5956C223.723 78.8971 224.272 78.0738 224.671 77.1259C225.07 76.1779 225.27 75.1551 225.27 74.0575V50.3337H235.897V89.9232H225.794L225.419 81.7659L227.365 80.8678C226.766 82.7138 225.769 84.3852 224.372 85.882C222.975 87.3787 221.303 88.5512 219.357 89.3994C217.412 90.2475 215.316 90.6716 213.071 90.6716Z" fill="#FFFFFF"/>
+        <path d="M177.556 89.9233V40.3054H188.183V89.9233H177.556ZM170.147 59.8382V50.3338H196.265V59.8382H170.147Z" fill="#FFFFFF"/>
+        <path d="M128.807 106.388V50.3336H139.06L139.359 59.2394L137.413 58.5658C137.763 56.9693 138.611 55.4974 139.958 54.1503C141.355 52.8033 143.076 51.7056 145.122 50.8575C147.167 50.0093 149.313 49.5852 151.558 49.5852C155 49.5852 158.044 50.4833 160.688 52.2794C163.382 54.0256 165.503 56.4454 167.049 59.5387C168.646 62.5821 169.444 66.0995 169.444 70.0909C169.444 74.0324 168.671 77.5498 167.124 80.6431C165.577 83.7365 163.457 86.1812 160.763 87.9773C158.069 89.7235 155 90.5966 151.558 90.5966C149.263 90.5966 147.067 90.1726 144.972 89.3244C142.926 88.4263 141.18 87.2539 139.733 85.807C138.286 84.3601 137.388 82.8134 137.039 81.167L139.509 80.1193V106.388H128.807ZM149.163 81.4664C151.109 81.4664 152.83 80.9924 154.327 80.0444C155.824 79.0965 156.996 77.7743 157.844 76.078C158.692 74.3318 159.116 72.3361 159.116 70.0909C159.116 67.8458 158.692 65.875 157.844 64.1787C156.996 62.4824 155.824 61.1602 154.327 60.2123C152.88 59.2643 151.159 58.7903 149.163 58.7903C147.167 58.7903 145.421 59.2643 143.924 60.2123C142.427 61.1103 141.255 62.4325 140.407 64.1787C139.559 65.875 139.135 67.8458 139.135 70.0909C139.135 72.3361 139.559 74.3318 140.407 76.078C141.255 77.7743 142.427 79.0965 143.924 80.0444C145.421 80.9924 147.167 81.4664 149.163 81.4664Z" fill="#FFFFFF"/>
+        <path d="M98.6198 90.6716C95.327 90.6716 92.3584 89.7736 89.7141 87.9774C87.0698 86.1813 84.9743 83.7366 83.4277 80.6433C81.881 77.5499 81.1077 74.0076 81.1077 70.0162C81.1077 66.0248 81.881 62.5074 83.4277 59.464C85.0242 56.3707 87.1696 53.9509 89.8638 52.2047C92.5579 50.4086 95.6263 49.5105 99.0689 49.5105C101.015 49.5105 102.786 49.8099 104.382 50.4086C106.029 50.9574 107.451 51.7307 108.648 52.7285C109.895 53.7264 110.943 54.8739 111.791 56.1711C112.64 57.4683 113.238 58.8653 113.588 60.3621L111.342 59.9879V50.3337H121.895V89.9232H111.193V80.4188L113.588 80.1942C113.188 81.5912 112.54 82.9134 111.642 84.1607C110.744 85.408 109.621 86.5306 108.274 87.5284C106.977 88.4763 105.505 89.2497 103.859 89.8484C102.212 90.3972 100.466 90.6716 98.6198 90.6716ZM101.539 81.4665C103.534 81.4665 105.28 80.9925 106.777 80.0446C108.274 79.0966 109.422 77.7745 110.22 76.0781C111.068 74.3319 111.492 72.3113 111.492 70.0162C111.492 67.7711 111.068 65.8003 110.22 64.104C109.422 62.4076 108.274 61.0855 106.777 60.1375C105.28 59.1397 103.534 58.6408 101.539 58.6408C99.5927 58.6408 97.8715 59.1397 96.3747 60.1375C94.9278 61.0855 93.7803 62.4076 92.9321 64.104C92.084 65.8003 91.6599 67.7711 91.6599 70.0162C91.6599 72.3113 92.084 74.3319 92.9321 76.0781C93.7803 77.7745 94.9278 79.0966 96.3747 80.0446C97.8715 80.9925 99.5927 81.4665 101.539 81.4665Z" fill="#FFFFFF"/>
+        <path d="M60.418 90.6716C56.5762 90.6716 53.0339 90.023 49.7909 88.7258C46.5978 87.3787 43.8038 85.5078 41.409 83.1129C39.0641 80.6682 37.243 77.7994 35.9458 74.5065C34.6486 71.1637 34 67.5216 34 63.5801C34 59.7384 34.6735 56.1961 36.0206 52.9531C37.3677 49.6602 39.2636 46.8163 41.7084 44.4215C44.1531 41.9768 47.0219 40.0809 50.3148 38.7338C53.6077 37.3867 57.175 36.7131 61.0167 36.7131C63.5113 36.7131 65.956 37.0624 68.3508 37.7609C70.7955 38.4095 73.0157 39.3824 75.0114 40.6796C77.057 41.9768 78.8032 43.5234 80.2501 45.3195L73.2153 53.1027C72.0179 51.9053 70.7706 50.8825 69.4734 50.0344C68.2261 49.1363 66.879 48.4628 65.4321 48.0137C64.0351 47.5148 62.5384 47.2653 60.9418 47.2653C58.7965 47.2653 56.7758 47.6645 54.8799 48.4628C53.0339 49.261 51.4124 50.3836 50.0154 51.8305C48.6184 53.2275 47.4959 54.9488 46.6477 56.9943C45.8494 58.99 45.4503 61.2102 45.4503 63.655C45.4503 66.1496 45.8494 68.4197 46.6477 70.4652C47.446 72.4609 48.5685 74.1822 50.0154 75.6291C51.4623 77.0261 53.1836 78.1237 55.1793 78.922C57.2248 79.6704 59.47 80.0446 61.9147 80.0446C63.5113 80.0446 65.0579 79.82 66.5547 79.371C68.0515 78.922 69.4235 78.2983 70.6708 77.5001C71.968 76.7018 73.1155 75.7788 74.1134 74.731L79.5766 83.4871C78.3792 84.8342 76.7577 86.0566 74.7121 87.1542C72.7164 88.2518 70.4712 89.1249 67.9766 89.7735C65.482 90.3723 62.9625 90.6716 60.418 90.6716Z" fill="#FFFFFF"/>
+        <path d="M260.538 31V40.6304H280.609V60.4616H290V31L260.538 31Z" fill="#FFFFFF"/>
+      </svg>
+    </div>
+    <div class="eyebrow">Lunch Radar</div>
+    <div class="sub">Everything within a <b>10-minute walk</b> of 8 Devonshire Square. Click a spot, filter by craving, or spin the wheel and let fate decide.</div>
+  </div>
+
+  <div id="controls">
+    <input id="search" type="search" placeholder="Search places or cuisines…">
+    <div id="chips"></div>
+    <div class="row">
+      <label>MAX WALK</label>
+      <input id="walk" type="range" min="1" max="10" value="10" step="1">
+      <span id="walkval">10 min</span>
+    </div>
+    <div id="actions">
+      <button class="btn primary" id="spin-open">🎡 Spin the wheel</button>
+      <button class="btn" id="add-toggle">📍 Add place</button>
+    </div>
+  </div>
+
+  <div id="count"></div>
+  <div id="list"></div>
+</aside>
+
+<!-- Add place modal -->
+<div class="overlay" id="add-overlay">
+  <div class="modal">
+    <span class="vf tl"></span><span class="vf br"></span>
+    <h2>Add a place</h2>
+    <div class="hint" id="add-coords"></div>
+    <label>Name</label>
+    <input id="add-name" type="text" placeholder="e.g. That amazing bánh mì cart">
+    <label>Category</label>
+    <select id="add-cat"></select>
+    <label>Note / cuisine (optional)</label>
+    <input id="add-note" type="text" placeholder="e.g. cash only, huge portions">
+    <label>Website (optional)</label>
+    <input id="add-url" type="url" placeholder="https://…">
+    <div class="btns">
+      <button class="btn" id="add-cancel">Cancel</button>
+      <button class="btn primary" id="add-save">Save place</button>
+    </div>
+  </div>
+</div>
+
+<!-- Wheel modal -->
+<div class="overlay" id="wheel-overlay">
+  <div class="modal" id="wheel-wrap">
+    <span class="vf tl"></span><span class="vf br"></span>
+    <h2>Wheel of Lunch</h2>
+    <div class="hint">12 contenders drawn from your current filters. No re-rolls. The wheel has spoken.</div>
+    <div id="wheel-box">
+      <div id="wheel-pointer"></div>
+      <div id="wheel-hub">🍽️</div>
+      <canvas id="wheel" width="640" height="640"></canvas>
+    </div>
+    <div id="wheel-result"></div>
+    <div class="btns">
+      <button class="btn" id="wheel-close">Close</button>
+      <button class="btn" id="wheel-respin">↻ New contenders</button>
+      <button class="btn primary" id="wheel-spin">SPIN</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.min.js"></script>
+<script src="data.js"></script>
+<script src="custom-places.js"></script>
+<script>
+'use strict';
+
+/* ---------------- data ---------------- */
+const CAT_BY_ID = Object.fromEntries(CATEGORIES.map(c => [c.id, c]));
+const LS_KEY = 'captur-lunch-custom-v1';
+
+function walkMins(la, lo) {
+  const R = 6371000, toR = Math.PI / 180;
+  const dLat = (la - OFFICE.lat) * toR, dLon = (lo - OFFICE.lon) * toR;
+  const a = Math.sin(dLat/2)**2 + Math.cos(OFFICE.lat*toR)*Math.cos(la*toR)*Math.sin(dLon/2)**2;
+  const m = 2 * R * Math.asin(Math.sqrt(a));
+  return Math.max(1, Math.round(m * 1.25 / 80));
+}
+
+function loadCustom() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch { return []; }
+}
+function saveCustom(arr) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(arr)); } catch {}
+}
+
+let customPlaces = loadCustom();
+function allPlaces() {
+  const shared = (typeof SHARED_CUSTOM !== 'undefined' ? SHARED_CUSTOM : []).map(p => ({...p, shared: true, w: p.w || walkMins(p.la, p.lo)}));
+  const mine = customPlaces.map(p => ({...p, custom: true, w: walkMins(p.la, p.lo)}));
+  return PLACES.concat(shared, mine);
+}
+
+/* ---------------- map ---------------- */
+const map = L.map('map', { zoomControl: false }).setView([OFFICE.lat, OFFICE.lon], 16);
+L.control.zoom({ position: 'bottomright' }).addTo(map);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxZoom: 19
+}).addTo(map);
+
+// Walk-radius rings (straight-line equivalent of 5 / 10 min at 80 m/min with 1.25 route factor)
+for (const [mins, r] of [[5, 320], [10, 640]]) {
+  L.circle([OFFICE.lat, OFFICE.lon], {
+    radius: r, color: '#54B4DD', weight: 1, opacity: .45, fill: false, dashArray: '6 8', interactive: false
+  }).addTo(map);
+  L.marker([OFFICE.lat + r / 111320, OFFICE.lon], {
+    interactive: false,
+    icon: L.divIcon({ className: '', html: `<div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#54B4DD;opacity:.8;white-space:nowrap;transform:translate(-14px,-6px)">${mins} min</div>` })
+  }).addTo(map);
+}
+
+L.marker([OFFICE.lat, OFFICE.lon], {
+  zIndexOffset: 1000,
+  icon: L.divIcon({ className: '', iconSize: [38, 38], iconAnchor: [19, 19],
+    html: '<div class="office-pin"><span class="c c1"></span><span class="c c2"></span><span class="c c3"></span><span class="c c4"></span><span class="dot"></span></div>' })
+}).addTo(map).bindPopup('<div class="pop-name">Captur HQ</div><div class="pop-meta">8 Devonshire Square, EC2M 4YJ</div>');
+
+const cluster = L.markerClusterGroup({ maxClusterRadius: 42, disableClusteringAtZoom: 18, showCoverageOnHover: false });
+map.addLayer(cluster);
+
+/* ---------------- state + filtering ---------------- */
+const activeCats = new Set(CATEGORIES.map(c => c.id));
+let maxWalk = 10, query = '';
+
+function filtered() {
+  const q = query.trim().toLowerCase();
+  return allPlaces().filter(p =>
+    p.w <= maxWalk &&
+    activeCats.has(p.c) &&
+    (!q || p.n.toLowerCase().includes(q) || (p.cu || '').toLowerCase().includes(q))
+  );
+}
+
+function popupHtml(p) {
+  const cat = CAT_BY_ID[p.c] || CAT_BY_ID.other;
+  const gmaps = `https://www.google.com/maps/dir/?api=1&origin=${OFFICE.lat},${OFFICE.lon}&destination=${p.la},${p.lo}&travelmode=walking`;
+  let html = `<div class="pop-name">${cat.emoji} ${esc(p.n)}${p.custom || p.shared ? ' <span style="font-size:10px;font-family:var(--mono);color:#54B4DD">TEAM PICK</span>' : ''}</div>`;
+  if (p.cu) html += `<div class="pop-meta">${esc(p.cu)}</div>`;
+  if (p.a) html += `<div class="pop-meta">${esc(p.a)}</div>`;
+  if (p.h) html += `<div class="pop-meta">🕐 ${esc(p.h)}</div>`;
+  html += `<div class="pop-walk">🚶 ~${p.w} min walk</div>`;
+  html += `<div class="pop-links"><a href="${gmaps}" target="_blank" rel="noopener">Directions</a>`;
+  if (p.u) html += `<a href="${esc(p.u)}" target="_blank" rel="noopener">Website</a>`;
+  if (p.custom) html += `<button onclick="removeCustom('${p.id}')">Remove</button>`;
+  html += `</div>`;
+  return html;
+}
+
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+const markerByKey = new Map();
+function keyOf(p) { return p.id || (p.n + '@' + p.la + ',' + p.lo); }
+
+function render() {
+  const places = filtered();
+  cluster.clearLayers();
+  markerByKey.clear();
+  const markers = places.map(p => {
+    const cat = CAT_BY_ID[p.c] || CAT_BY_ID.other;
+    const mk = L.marker([p.la, p.lo], {
+      icon: L.divIcon({ className: '', iconSize: [30, 30], iconAnchor: [15, 15],
+        html: `<div class="emoji-pin${p.custom || p.shared ? ' custom' : ''}">${cat.emoji}</div>` })
+    }).bindPopup(popupHtml(p));
+    markerByKey.set(keyOf(p), mk);
+    return mk;
+  });
+  cluster.addLayers(markers);
+
+  document.getElementById('count').innerHTML = `<b>${places.length}</b> places in range`;
+
+  const list = document.getElementById('list');
+  list.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  for (const p of places) {
+    const cat = CAT_BY_ID[p.c] || CAT_BY_ID.other;
+    const el = document.createElement('div');
+    el.className = 'item';
+    el.innerHTML = `<span class="em">${cat.emoji}</span>
+      <div style="min-width:0"><div class="nm">${esc(p.n)}${p.custom || p.shared ? '<span class="custom-dot" title="Team pick"></span>' : ''}</div>
+      <div class="meta">${esc(p.cu || cat.label)}</div></div>
+      <span class="wk">${p.w}′</span>`;
+    el.addEventListener('click', () => flyTo(p));
+    frag.appendChild(el);
+  }
+  list.appendChild(frag);
+}
+
+function flyTo(p) {
+  map.flyTo([p.la, p.lo], 18, { duration: .8 });
+  const mk = markerByKey.get(keyOf(p));
+  if (mk) setTimeout(() => { cluster.zoomToShowLayer(mk, () => mk.openPopup()); }, 850);
+  if (window.innerWidth <= 720) document.getElementById('panel').classList.add('collapsed');
+}
+
+/* ---------------- controls ---------------- */
+const chipsEl = document.getElementById('chips');
+for (const c of CATEGORIES) {
+  const b = document.createElement('button');
+  b.className = 'chip on';
+  b.textContent = `${c.emoji} ${c.label}`;
+  b.title = 'Click: toggle · Double-click: only this';
+  b.addEventListener('click', () => {
+    if (activeCats.has(c.id) && activeCats.size === 1) { CATEGORIES.forEach(x => activeCats.add(x.id)); }
+    else if (activeCats.has(c.id)) activeCats.delete(c.id);
+    else activeCats.add(c.id);
+    syncChips(); render();
+  });
+  b.addEventListener('dblclick', () => { activeCats.clear(); activeCats.add(c.id); syncChips(); render(); });
+  b.dataset.cat = c.id;
+  chipsEl.appendChild(b);
+}
+function syncChips() {
+  for (const b of chipsEl.children) b.classList.toggle('on', activeCats.has(b.dataset.cat));
+}
+
+document.getElementById('search').addEventListener('input', e => { query = e.target.value; render(); });
+document.getElementById('walk').addEventListener('input', e => {
+  maxWalk = +e.target.value;
+  document.getElementById('walkval').textContent = maxWalk + ' min';
+  render();
+});
+document.getElementById('hamburger').addEventListener('click', () =>
+  document.getElementById('panel').classList.toggle('collapsed'));
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.display = 'block';
+  clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 3200);
+}
+
+/* ---------------- add place ---------------- */
+let adding = false, pendingLatLng = null;
+const addBtn = document.getElementById('add-toggle');
+const catSel = document.getElementById('add-cat');
+for (const c of CATEGORIES) {
+  const o = document.createElement('option');
+  o.value = c.id; o.textContent = `${c.emoji} ${c.label}`;
+  catSel.appendChild(o);
+}
+
+addBtn.addEventListener('click', () => {
+  adding = !adding;
+  addBtn.classList.toggle('danger-on', adding);
+  addBtn.textContent = adding ? '✕ Cancel — click the map' : '📍 Add place';
+  document.getElementById('map').style.cursor = adding ? 'crosshair' : '';
+  if (adding) toast('Click the map where the place is');
+});
+
+map.on('click', e => {
+  if (!adding) return;
+  pendingLatLng = e.latlng;
+  document.getElementById('add-coords').textContent =
+    `Pinned at ${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)} — ~${walkMins(e.latlng.lat, e.latlng.lng)} min walk`;
+  document.getElementById('add-name').value = '';
+  document.getElementById('add-note').value = '';
+  document.getElementById('add-url').value = '';
+  document.getElementById('add-overlay').classList.add('show');
+  setTimeout(() => document.getElementById('add-name').focus(), 50);
+});
+
+document.getElementById('add-cancel').addEventListener('click', () =>
+  document.getElementById('add-overlay').classList.remove('show'));
+
+document.getElementById('add-save').addEventListener('click', () => {
+  const name = document.getElementById('add-name').value.trim();
+  if (!name || !pendingLatLng) { toast('Give it a name first'); return; }
+  const p = {
+    id: 'c' + Date.now(),
+    n: name,
+    la: +pendingLatLng.lat.toFixed(6), lo: +pendingLatLng.lng.toFixed(6),
+    c: catSel.value,
+    cu: document.getElementById('add-note').value.trim(),
+    a: '', u: document.getElementById('add-url').value.trim(), h: ''
+  };
+  customPlaces.push(p);
+  saveCustom(customPlaces);
+  document.getElementById('add-overlay').classList.remove('show');
+  adding = false;
+  addBtn.classList.remove('danger-on');
+  addBtn.textContent = '📍 Add place';
+  document.getElementById('map').style.cursor = '';
+  render();
+  toast(`Added “${name}” — saved in this browser. Add it to custom-places.js to share with the team.`);
+});
+
+function removeCustom(id) {
+  customPlaces = customPlaces.filter(p => p.id !== id);
+  saveCustom(customPlaces);
+  map.closePopup();
+  render();
+  toast('Removed');
+}
+
+/* ---------------- wheel of fortune ---------------- */
+const WHEEL_COLORS = ['#4938E2', '#386EE2', '#54B4DD', '#3B2FB8', '#2F5BC4', '#41219E', '#4A90D9', '#5E4AE8'];
+const wheelCanvas = document.getElementById('wheel');
+const wctx = wheelCanvas.getContext('2d');
+let wheelPlaces = [], wheelAngle = 0, spinning = false;
+
+function pickContenders() {
+  const pool = filtered().slice();
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, 12);
+}
+
+function drawWheel(angle) {
+  const n = wheelPlaces.length;
+  const cx = 320, cy = 320, r = 312;
+  wctx.clearRect(0, 0, 640, 640);
+  if (!n) return;
+  const arc = 2 * Math.PI / n;
+  for (let i = 0; i < n; i++) {
+    const a0 = angle + i * arc - Math.PI / 2;
+    wctx.beginPath();
+    wctx.moveTo(cx, cy);
+    wctx.arc(cx, cy, r, a0, a0 + arc);
+    wctx.closePath();
+    wctx.fillStyle = WHEEL_COLORS[i % WHEEL_COLORS.length];
+    wctx.fill();
+    wctx.strokeStyle = 'rgba(10,10,10,.75)';
+    wctx.lineWidth = 3;
+    wctx.stroke();
+    // label
+    wctx.save();
+    wctx.translate(cx, cy);
+    wctx.rotate(a0 + arc / 2);
+    wctx.textAlign = 'right';
+    wctx.fillStyle = '#fff';
+    const cat = CAT_BY_ID[wheelPlaces[i].c] || CAT_BY_ID.other;
+    let label = wheelPlaces[i].n;
+    if (label.length > 20) label = label.slice(0, 19) + '…';
+    wctx.font = '600 19px "Lexend Deca", sans-serif';
+    wctx.fillText(label, r - 40, 7);
+    wctx.font = '22px sans-serif';
+    wctx.fillText(cat.emoji, r - 8, 8);
+    wctx.restore();
+  }
+  wctx.beginPath();
+  wctx.arc(cx, cy, r, 0, 2 * Math.PI);
+  wctx.strokeStyle = '#fff';
+  wctx.lineWidth = 4;
+  wctx.stroke();
+}
+
+function resetWheel() {
+  wheelPlaces = pickContenders();
+  wheelAngle = 0;
+  document.getElementById('wheel-result').innerHTML = wheelPlaces.length
+    ? '' : '<div class="win-meta">No places match your filters — loosen them and try again.</div>';
+  document.getElementById('wheel-spin').disabled = !wheelPlaces.length;
+  drawWheel(0);
+}
+
+function spin() {
+  if (spinning || !wheelPlaces.length) return;
+  spinning = true;
+  document.getElementById('wheel-result').innerHTML = '';
+  const spins = 5 + Math.random() * 3;
+  const startAngle = wheelAngle;
+  const target = startAngle + spins * 2 * Math.PI + Math.random() * 2 * Math.PI;
+  const dur = 4600, t0 = performance.now();
+  function frame(t) {
+    const p = Math.min(1, (t - t0) / dur);
+    const ease = 1 - Math.pow(1 - p, 3);
+    drawWheel(startAngle + (target - startAngle) * ease);
+    if (p < 1) requestAnimationFrame(frame);
+    else { wheelAngle = target % (2 * Math.PI); finishSpin(); }
+  }
+  requestAnimationFrame(frame);
+}
+
+function finishSpin() {
+  spinning = false;
+  const n = wheelPlaces.length, arc = 2 * Math.PI / n;
+  // pointer is at top (-PI/2). Segment i spans angle + i*arc - PI/2 … + arc.
+  // Find i such that pointer angle falls inside after rotation.
+  const rel = ((-wheelAngle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+  const idx = Math.floor(rel / arc) % n;
+  const win = wheelPlaces[idx];
+  const cat = CAT_BY_ID[win.c] || CAT_BY_ID.other;
+  document.getElementById('wheel-result').innerHTML =
+    `<div class="win-name">${cat.emoji} ${esc(win.n)}</div>
+     <div class="win-meta">${esc(win.cu || cat.label)} · ~${win.w} min walk</div>
+     <div class="btns" style="margin-top:8px"><button class="btn primary" id="wheel-go">Take me there →</button></div>`;
+  document.getElementById('wheel-go').addEventListener('click', () => {
+    document.getElementById('wheel-overlay').classList.remove('show');
+    flyTo(win);
+  });
+  drawWheel(wheelAngle);
+}
+
+document.getElementById('spin-open').addEventListener('click', () => {
+  resetWheel();
+  document.getElementById('wheel-overlay').classList.add('show');
+});
+document.getElementById('wheel-close').addEventListener('click', () =>
+  document.getElementById('wheel-overlay').classList.remove('show'));
+document.getElementById('wheel-respin').addEventListener('click', resetWheel);
+document.getElementById('wheel-spin').addEventListener('click', spin);
+
+/* ---------------- go ---------------- */
+render();
+</script>
+</body>
+</html>
