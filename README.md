@@ -8,10 +8,13 @@ within a ~10-minute walk, plotted on a dark Captur-branded map.
 
 ## Features
 
-- 🗺️ **416 real places** within a 10-minute walk, pulled from OpenStreetMap,
+- 🗺️ **242 real places** within a 10-minute walk, pulled from OpenStreetMap,
   with emoji markers by cuisine and 5/10-minute walk rings around the office.
-  Major high-street chains (Pret, Greggs, Itsu, Costa, McDonald's, …) are
-  filtered out — independents and small local spots only
+  Three house rules keep the list honest:
+  - no major high-street chains (Pret, Greggs, Itsu, Costa, McDonald's, …)
+  - no coffee shops — this is a lunch map
+  - nothing over ~£15 a meal (fine dining, steakhouses, and hotel
+    restaurants are curated out by name — OSM has no price data)
 - 🔍 Search, category filter chips (double-click a chip to isolate it), and a
   max-walk-time slider
 - 🎡 **Wheel of Lunch** — spins across 12 contenders drawn from your current
