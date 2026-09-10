@@ -13,7 +13,7 @@
 //    c = category id (see CATEGORIES in data.js), cu = cuisine/note,
 //    a = address, u = website, h = opening hours.
 const TEAM_PICKS = [
-  // "Delicious Pho",
+  "Fuzzy's Grub",
 ];
 const SHARED_CUSTOM = [
   // {"n": "Example: secret bánh mì cart", "la": 51.5175, "lo": -0.0775, "c": "asian", "cu": "bánh mì, cash only", "a": "", "u": "", "h": ""},
