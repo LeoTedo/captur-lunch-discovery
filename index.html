@@ -250,6 +250,7 @@
     <input id="search" type="search" placeholder="Search places or cuisines…">
     <div id="chips"></div>
     <div id="chips2">
+      <button class="chip" id="f-pick" title="Places the team has endorsed — mark one from its popup">⭐ Team picks</button>
       <button class="chip" id="f-open" title="Only places whose opening hours say they're open right now — places with no hours data in OpenStreetMap are hidden too">🟢 Open now</button>
       <button class="chip" id="f-vt" title="Vegetarian-friendly (per OpenStreetMap tags)">🌱 Vegetarian</button>
       <button class="chip" id="f-vg" title="Vegan-friendly (per OpenStreetMap tags)">🌿 Vegan</button>
@@ -346,6 +347,28 @@ function allPlaces() {
   return PLACES.concat(shared, mine);
 }
 
+/* ---------------- team picks ---------------- */
+const PICKS_KEY = 'captur-lunch-picks-v1';
+const filePicks = new Set((typeof TEAM_PICKS !== 'undefined' ? TEAM_PICKS : []).map(n => n.toLowerCase()));
+let localPicks;
+try { localPicks = new Set((JSON.parse(localStorage.getItem(PICKS_KEY)) || []).map(n => n.toLowerCase())); }
+catch { localPicks = new Set(); }
+
+function isPick(p) {
+  return !!(p.custom || p.shared || filePicks.has(p.n.toLowerCase()) || localPicks.has(p.n.toLowerCase()));
+}
+function togglePick(name) {
+  const k = name.toLowerCase();
+  if (localPicks.has(k)) { localPicks.delete(k); toast('Team pick removed'); }
+  else {
+    localPicks.add(k);
+    toast(`⭐ “${name}” marked — saved in this browser. Add it to TEAM_PICKS in custom-places.js to share with everyone.`);
+  }
+  try { localStorage.setItem(PICKS_KEY, JSON.stringify([...localPicks])); } catch {}
+  map.closePopup();
+  render();
+}
+
 /* ---------------- map ---------------- */
 const map = L.map('map', { zoomControl: false }).setView([OFFICE.lat, OFFICE.lon], 16);
 L.control.zoom({ position: 'bottomright' }).addTo(map);
@@ -437,13 +460,14 @@ function openState(p) { // true = open, false = closed, null = unknown
 /* ---------------- state + filtering ---------------- */
 const activeCats = new Set(CATEGORIES.map(c => c.id));
 let maxWalk = 10, query = '';
-const flags = { open: false, vt: false, vg: false, hl: false };
+const flags = { open: false, vt: false, vg: false, hl: false, pick: false };
 
 function filtered() {
   const q = query.trim().toLowerCase();
   return allPlaces().filter(p =>
     p.w <= maxWalk &&
     activeCats.has(p.c) &&
+    (!flags.pick || isPick(p)) &&
     (!flags.vt || p.vt) && (!flags.vg || p.vg) && (!flags.hl || p.hl) &&
     (!flags.open || openState(p) === true) &&
     (!q || p.n.toLowerCase().includes(q) || (p.cu || '').toLowerCase().includes(q))
@@ -453,7 +477,7 @@ function filtered() {
 function popupHtml(p) {
   const cat = CAT_BY_ID[p.c] || CAT_BY_ID.other;
   const gmaps = `https://www.google.com/maps/dir/?api=1&origin=${OFFICE.lat},${OFFICE.lon}&destination=${p.la},${p.lo}&travelmode=walking`;
-  let html = `<div class="pop-name">${cat.emoji} ${esc(p.n)}${p.custom || p.shared ? ' <span style="font-size:10px;font-family:var(--mono);color:#54B4DD">TEAM PICK</span>' : ''}</div>`;
+  let html = `<div class="pop-name">${cat.emoji} ${esc(p.n)}${isPick(p) ? ' <span style="font-size:10px;font-family:var(--mono);color:#54B4DD">⭐ TEAM PICK</span>' : ''}</div>`;
   if (p.cu) html += `<div class="pop-meta">${esc(p.cu)}</div>`;
   if (p.a) html += `<div class="pop-meta">${esc(p.a)}</div>`;
   if (p.h) html += `<div class="pop-meta">🕐 ${esc(p.h)}</div>`;
@@ -465,6 +489,8 @@ function popupHtml(p) {
   html += `<div class="pop-links"><a href="${gmaps}" target="_blank" rel="noopener">Directions</a>`;
   if (p.u) html += `<a href="${esc(p.u)}" target="_blank" rel="noopener">Website</a>`;
   if (p.custom) html += `<button onclick="removeCustom('${p.id}')">Remove</button>`;
+  else if (localPicks.has(p.n.toLowerCase())) html += `<button data-n="${esc(p.n)}" onclick="togglePick(this.dataset.n)">★ Un-pick</button>`;
+  else if (!filePicks.has(p.n.toLowerCase()) && !p.shared) html += `<button data-n="${esc(p.n)}" onclick="togglePick(this.dataset.n)">☆ Team pick</button>`;
   html += `</div>`;
   return html;
 }
@@ -482,7 +508,7 @@ function render() {
     const cat = CAT_BY_ID[p.c] || CAT_BY_ID.other;
     const mk = L.marker([p.la, p.lo], {
       icon: L.divIcon({ className: '', iconSize: [30, 30], iconAnchor: [15, 15],
-        html: `<div class="emoji-pin${p.custom || p.shared ? ' custom' : ''}">${cat.emoji}</div>` })
+        html: `<div class="emoji-pin${isPick(p) ? ' custom' : ''}">${cat.emoji}</div>` })
     }).bindPopup(popupHtml(p));
     markerByKey.set(keyOf(p), mk);
     return mk;
@@ -502,7 +528,7 @@ function render() {
     const dot = st === true ? '<span class="st o" title="Open now"></span>'
               : st === false ? '<span class="st c" title="Closed right now"></span>' : '';
     el.innerHTML = `<span class="em">${cat.emoji}</span>
-      <div style="min-width:0"><div class="nm">${dot}${esc(p.n)}${p.custom || p.shared ? '<span class="custom-dot" title="Team pick"></span>' : ''}</div>
+      <div style="min-width:0"><div class="nm">${dot}${esc(p.n)}${isPick(p) ? '<span class="custom-dot" title="Team pick"></span>' : ''}</div>
       <div class="meta">${esc(p.cu || cat.label)}</div></div>
       <span class="wk">${p.w}′</span>`;
     el.addEventListener('click', () => flyTo(p));
@@ -550,7 +576,7 @@ function syncChips() {
 }
 syncChips();
 
-for (const [id, key] of [['f-open', 'open'], ['f-vt', 'vt'], ['f-vg', 'vg'], ['f-hl', 'hl']]) {
+for (const [id, key] of [['f-pick', 'pick'], ['f-open', 'open'], ['f-vt', 'vt'], ['f-vg', 'vg'], ['f-hl', 'hl']]) {
   document.getElementById(id).addEventListener('click', e => {
     flags[key] = !flags[key];
     e.currentTarget.classList.toggle('on', flags[key]);

@@ -26,13 +26,19 @@ within a ~10-minute walk, plotted on a dark Captur-branded map.
   filters; the wheel's verdict is final
 - 📍 **Add place** — click the button, click the map, fill in the form. Saved
   in your browser's localStorage
+- ⭐ **Team picks** — mark any place as a team pick from its popup, and
+  filter down to just the picks with the ⭐ chip. Marks are per-browser;
+  commit a name to `TEAM_PICKS` in [custom-places.js](custom-places.js) to
+  give it the badge for everyone
 - 🚶 Walk-time estimates and one-click Google Maps walking directions
 
-## Sharing a place with the whole team
+## Sharing picks and places with the whole team
 
-Places added through the UI live only in your own browser. To make one show up
-for everyone, add it to [custom-places.js](custom-places.js) and push — it will
-appear for the whole team with a `TEAM PICK` badge.
+Places added and picks marked through the UI live only in your own browser.
+[custom-places.js](custom-places.js) is the shared layer — commit and push to it:
+
+- add a place name to `TEAM_PICKS` to badge an existing place for everyone
+- add an entry to `SHARED_CUSTOM` to put a missing place on everyone's map
 
 ## Running locally
 
